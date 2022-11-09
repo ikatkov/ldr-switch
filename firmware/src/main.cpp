@@ -9,9 +9,9 @@
 #define ADC_PIN A0
 #define INT_PIN PD7 // also button pin
 #elif defined(__AVR_ATtiny13__)
-#define LOAD_PIN PB2
+#define LOAD_PIN PB4
 #define ADC_PIN A3
-#define INT_PIN PB4 // also button pin
+#define INT_PIN PB2 // also button pin
 #endif
 #define SLEEP_FOREVER 10
 
@@ -47,20 +47,21 @@ int EEPROM_readAnything(int address, T &value)
 
 void powerDown(uint8_t sleepTime);
 
+#if defined(__AVR_ATmega328P__)
 EMPTY_INTERRUPT(PCINT2_vect);
+#elif defined(__AVR_ATtiny13__)
+EMPTY_INTERRUPT(PCINT0_vect);
+#endif
 
 void readButton()
 {
-    Serial.println("readButton");
     if (digitalRead(INT_PIN) == LOW)
     {
         if (STATE == ON)
         {
-            Serial.println("STATE == ON");
             digitalWrite(LOAD_PIN, LOW);
-            delay(2000); // debounce + rising edge
-            Serial.println("WAIT_FOR_RESET");
             STATE = WAIT_FOR_RESET;
+            delay(2000); // debounce + rising edge
         }
         else if (STATE == OFF || STATE == WAIT_FOR_RESET)
         {
@@ -68,16 +69,10 @@ void readButton()
             digitalWrite(LOAD_PIN, HIGH);
             timer_sec = LIGHT_ON_DURATION_SEC;
 
-            //set new lightThresholdDark
-            uint16_t lightLevel = analogRead(ADC_PIN);
-            lightThresholdDark = lightLevel;
+            // set new lightThresholdDark
+            lightThresholdDark = analogRead(ADC_PIN);
 
-            Serial.print("STATE=");
-            Serial.println(STATE);
-            Serial.print("lightLevel=");
-            Serial.println(lightLevel);
-
-            // EEPROM_writeAnything(0, lightLevel);
+            EEPROM_writeAnything(0, lightThresholdDark);
             delay(2000); // debounce + rising edge
         }
     }
@@ -91,10 +86,6 @@ ISR(WDT_vect)
 
 void powerDown(uint8_t sleepTime)
 {
-    Serial.print("powerDown = ");
-    Serial.println(sleepTime);
-    delay(100);
-
     ADCSRA &= ~(1 << ADEN); // adc OFF
     if (sleepTime == SLEEP_FOREVER)
     {
@@ -104,7 +95,7 @@ void powerDown(uint8_t sleepTime)
     else
     {
         wdt_enable(sleepTime); // watchdog
-        WDTCSR |= (1 << WDIE);
+        // WDTCSR |= (1 << WDIE);
     }
 
     do
@@ -120,60 +111,46 @@ void powerDown(uint8_t sleepTime)
         sei();
     } while (0);
 
-    Serial.println("power UP");
     ADCSRA |= (1 << ADEN); // adc ON
 }
 
 void setup()
 {
-    Serial.println("setup");
-
+#if defined(__AVR_ATmega328P__)
     Serial.begin(9600);
     while (!Serial)
         delay(10);
 
-    pinMode(LOAD_PIN, OUTPUT);
-    pinMode(INT_PIN, INPUT_PULLUP);
+    pinMode(LOAD_PIN, OUTPUT);      // mosfet gate
+    pinMode(INT_PIN, INPUT_PULLUP); // button pin
 
     cli();
     PCICR |= _BV(PCIE2);    //  turn on port d
     PCMSK2 |= _BV(PCINT23); // turn on pin PD7, which is PCINT23, physical pin 7
     sei();
+#endif
 
 #if defined(__AVR_ATtiny13__)
-
     pinMode(PB0, OUTPUT);
     pinMode(PB1, OUTPUT);
-    pinMode(PB2, OUTPUT);
-    pinMode(PB3, INPUT);
-    pinMode(PB4, INPUT_PULLUP);
+    pinMode(PB2, INPUT_PULLUP);
+    pinMode(PB3, INPUT); // ADC
+    pinMode(PB4, OUTPUT);
 #endif
 
     EEPROM_readAnything(0, lightThresholdDark);
-    Serial.print("setupEEPROM = ");
-    Serial.println(lightThresholdDark);
     if (lightThresholdDark < 0 || lightThresholdDark > 1024)
     {
         lightThresholdDark = 700;
         EEPROM_writeAnything(0, lightThresholdDark);
     }
-    Serial.print("lightThresholdDark = ");
-    Serial.println(lightThresholdDark);
 }
 
 void loop()
 {
-    Serial.println("---");
     readButton();
 
     uint16_t lightLevel = analogRead(ADC_PIN);
-    Serial.print("lightLevel = ");
-    Serial.println(lightLevel);
-    Serial.print("lightThresholdDark = ");
-    Serial.println(lightThresholdDark);
-    Serial.print("STATE = ");
-    Serial.println(STATE);
-    delay(100);
 
     if (lightLevel <= lightThresholdBright && STATE == WAIT_FOR_RESET)
     {
@@ -182,28 +159,20 @@ void loop()
 
     if (lightLevel >= lightThresholdDark && STATE == OFF)
     {
-        Serial.println("it's dark, turn the lights ON");
-        delay(100);
         digitalWrite(LOAD_PIN, HIGH);
-        STATE = ON;
         timer_sec = LIGHT_ON_DURATION_SEC;
+        STATE = ON;
     }
     else if (STATE == ON && timer_sec <= 0)
     {
-        Serial.println("timer is up");
-        delay(100);
         digitalWrite(LOAD_PIN, LOW);
         STATE = WAIT_FOR_RESET;
     }
     else if (STATE == ON && lightLevel < lightThresholdDark)
     {
-        Serial.println("it's bright");
-        delay(100);
         digitalWrite(LOAD_PIN, LOW);
         STATE = OFF;
     }
-    Serial.print("timer_sec = ");
-    Serial.println(timer_sec);
     powerDown(WDTO_8S);
 
     if (timer_sec > 0)
