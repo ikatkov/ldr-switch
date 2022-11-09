@@ -3,7 +3,7 @@
 #include <avr/sleep.h>
 #include <avr/wdt.h>
 
-#define LIGHT_ON_DELAY_MS 60 * 1000
+#define LIGHT_ON_DURATION_SEC 20
 #if defined(__AVR_ATmega328P__)
 #define LOAD_PIN 9
 #define ADC_PIN A0
@@ -15,19 +15,15 @@
 #endif
 #define SLEEP_FOREVER 10
 
-static uint16_t lightThreshold;
-static uint32_t lightOnTimestamp;
+static uint16_t lightThresholdDark = 700;
+static uint16_t lightThresholdBright = 350;
 static enum state_t {
-    ON,
     OFF,
-    SLEEP
+    ON,
+    WAIT_FOR_RESET
 } STATE;
 
-#define PRESSED LOW
-#define NOT_PRESSED HIGH
-#define SHORT_PRESS_MS 100
-#define LONG_PRESS_MS 500
-#define DEBOUNCE_MS 10
+static int32_t timer_sec = 0;
 
 template <class T>
 int EEPROM_writeAnything(int address, const T &value)
@@ -53,36 +49,36 @@ void powerDown(uint8_t sleepTime);
 
 EMPTY_INTERRUPT(PCINT2_vect);
 
-void buttonCheck()
+void readButton()
 {
-    uint8_t value = digitalRead(INT_PIN);
-
-    Serial.print("buttonCheck = ");
-    Serial.println(value);
-    if (value == LOW)
+    Serial.println("readButton");
+    if (digitalRead(INT_PIN) == LOW)
     {
-        Serial.println("digitalRead(INT_PIN) == LOW");
         if (STATE == ON)
         {
             Serial.println("STATE == ON");
             digitalWrite(LOAD_PIN, LOW);
-            lightOnTimestamp = 0;
-            delay(4000);
-            Serial.println("SLEEP_FOREVER");
-            STATE = SLEEP;
+            delay(2000); // debounce + rising edge
+            Serial.println("WAIT_FOR_RESET");
+            STATE = WAIT_FOR_RESET;
         }
-        else if (STATE == OFF)
+        else if (STATE == OFF || STATE == WAIT_FOR_RESET)
         {
-            digitalWrite(LOAD_PIN, HIGH);
             STATE = ON;
-            lightOnTimestamp = 0;
-            uint16_t lightLevel = analogRead(ADC_PIN);
+            digitalWrite(LOAD_PIN, HIGH);
+            timer_sec = LIGHT_ON_DURATION_SEC;
 
-            Serial.print("STATE == OFF lightLevel = ");
+            //set new lightThresholdDark
+            uint16_t lightLevel = analogRead(ADC_PIN);
+            lightThresholdDark = lightLevel;
+
+            Serial.print("STATE=");
+            Serial.println(STATE);
+            Serial.print("lightLevel=");
             Serial.println(lightLevel);
 
             // EEPROM_writeAnything(0, lightLevel);
-            delay(2000);
+            delay(2000); // debounce + rising edge
         }
     }
 }
@@ -100,7 +96,12 @@ void powerDown(uint8_t sleepTime)
     delay(100);
 
     ADCSRA &= ~(1 << ADEN); // adc OFF
-    if (sleepTime == SLEEP_FOREVER){}
+    if (sleepTime == SLEEP_FOREVER)
+    {
+        wdt_reset();
+        wdt_disable();
+    }
+    else
     {
         wdt_enable(sleepTime); // watchdog
         WDTCSR |= (1 << WDIE);
@@ -122,6 +123,7 @@ void powerDown(uint8_t sleepTime)
     Serial.println("power UP");
     ADCSRA |= (1 << ADEN); // adc ON
 }
+
 void setup()
 {
     Serial.println("setup");
@@ -147,54 +149,65 @@ void setup()
     pinMode(PB4, INPUT_PULLUP);
 #endif
 
-    EEPROM_readAnything(0, lightThreshold);
+    EEPROM_readAnything(0, lightThresholdDark);
     Serial.print("setupEEPROM = ");
-    Serial.println(lightThreshold);
-    if (lightThreshold < 0 || lightThreshold > 1024)
+    Serial.println(lightThresholdDark);
+    if (lightThresholdDark < 0 || lightThresholdDark > 1024)
     {
-        lightThreshold = 700;
-        EEPROM_writeAnything(0, lightThreshold);
+        lightThresholdDark = 700;
+        EEPROM_writeAnything(0, lightThresholdDark);
     }
-    Serial.print("lightThreshold = ");
-    Serial.println(lightThreshold);
+    Serial.print("lightThresholdDark = ");
+    Serial.println(lightThresholdDark);
 }
 
 void loop()
 {
-    buttonCheck();
     Serial.println("---");
-
-    if (STATE == SLEEP)
-    {
-        powerDown(SLEEP_FOREVER);
-    }
+    readButton();
 
     uint16_t lightLevel = analogRead(ADC_PIN);
     Serial.print("lightLevel = ");
     Serial.println(lightLevel);
-    Serial.print("lightThreshold = ");
-    Serial.println(lightThreshold);
-
+    Serial.print("lightThresholdDark = ");
+    Serial.println(lightThresholdDark);
+    Serial.print("STATE = ");
+    Serial.println(STATE);
     delay(100);
-    if (lightLevel >= lightThreshold && lightOnTimestamp == 0)
+
+    if (lightLevel <= lightThresholdBright && STATE == WAIT_FOR_RESET)
     {
-        Serial.println("it's dark");
+        STATE = OFF;
+    }
+
+    if (lightLevel >= lightThresholdDark && STATE == OFF)
+    {
+        Serial.println("it's dark, turn the lights ON");
         delay(100);
         digitalWrite(LOAD_PIN, HIGH);
         STATE = ON;
-        lightOnTimestamp = millis();
+        timer_sec = LIGHT_ON_DURATION_SEC;
     }
-    else if (lightLevel < lightThreshold || millis() > lightOnTimestamp + LIGHT_ON_DELAY_MS)
+    else if (STATE == ON && timer_sec <= 0)
     {
-        Serial.println("it's bright or the time is up");
+        Serial.println("timer is up");
+        delay(100);
+        digitalWrite(LOAD_PIN, LOW);
+        STATE = WAIT_FOR_RESET;
+    }
+    else if (STATE == ON && lightLevel < lightThresholdDark)
+    {
+        Serial.println("it's bright");
         delay(100);
         digitalWrite(LOAD_PIN, LOW);
         STATE = OFF;
-        lightOnTimestamp = 0;
-        powerDown(WDTO_8S);
     }
-    else
+    Serial.print("timer_sec = ");
+    Serial.println(timer_sec);
+    powerDown(WDTO_8S);
+
+    if (timer_sec > 0)
     {
-        powerDown(WDTO_8S);
+        timer_sec -= 8;
     }
 }
