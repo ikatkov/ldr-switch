@@ -1,8 +1,9 @@
 # Tiny LDR switch
 
-It turns ON when it's dark (user configurable), stays ON for X hours, turns OFF, and waits till it's dark again. Intended to use with a battery, so it only consumes 5uA.
-Load power consumption varies.
+Based on $0.60 Attiny13 MCU. 1kB flash, 256B ram.
 
+It turns ON when it's dark (user configurable), stays ON for X hours, turns OFF, and waits till it's dark again. Intended to use with a battery, so it only consumes 5uA. Watch out for input power voltage. Min is 1.8V max is 5.5V. Max load current ~2A. Exceeds this and PCB traces will heat up and unsolder components.
+There is simple diode craw-bar reverse voltage protection for MCU.
 
 
 ![Schematic](schematic.jpg)
