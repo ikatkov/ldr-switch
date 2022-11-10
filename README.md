@@ -13,9 +13,9 @@ There is simple diode craw-bar reverse voltage protection for MCU.
 ![PCB](pcb.jpg)
 ![Top view](top-view-3d.jpg)
 ![Bottom view](bottom-view-3d.jpg)
-![PCB](kicad/main.step)
-![Enclosure lid](lid.stl)
-![Enclosure base](base.stl)
+[PCB](./kicad/main.step)
+[Enclosure lid](lid.stl)
+[Enclosure base](base.stl)
 
 
 # Code
