@@ -1103,7 +1103,7 @@
     (uuid 02eed7f8-646e-4c7f-abe4-21cd29a1e93f)
     (property "Reference" "SW1" (id 0) (at 167.64 133.985 0))
     (property "Value" "SW_SPST" (id 1) (at 167.64 136.7601 0))
-    (property "Footprint" "Button_Switch_SMD:SW_Push_SPST_NO_Alps_SKRK" (id 2) (at 170.18 131.445 0)
+    (property "Footprint" "Button_Switch_THT:SW_PUSH_6mm" (id 2) (at 170.18 131.445 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (id 3) (at 170.18 131.445 0)
@@ -1628,7 +1628,7 @@
       (reference "R7") (unit 1) (value "10k") (footprint "Resistor_SMD:R_0805_2012Metric")
     )
     (path "/02eed7f8-646e-4c7f-abe4-21cd29a1e93f"
-      (reference "SW1") (unit 1) (value "SW_SPST") (footprint "Button_Switch_SMD:SW_Push_SPST_NO_Alps_SKRK")
+      (reference "SW1") (unit 1) (value "SW_SPST") (footprint "Button_Switch_THT:SW_PUSH_6mm")
     )
     (path "/a5624d14-534e-4568-b415-af0009b2ac24"
       (reference "U1") (unit 1) (value "ATtiny13-20SS") (footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm")
