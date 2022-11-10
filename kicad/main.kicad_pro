@@ -33,9 +33,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 0.0,
-          "height": 2.0,
-          "width": 2.0
+          "drill": 1.0,
+          "height": 2.5,
+          "width": 2.5
         },
         "silk_line_width": 0.15239999999999998,
         "silk_text_italic": false,
@@ -397,7 +397,7 @@
       "idf": "",
       "netlist": "",
       "specctra_dsn": "",
-      "step": "",
+      "step": "main.step",
       "vrml": ""
     },
     "page_layout_descr_file": "default.kicad_wks"

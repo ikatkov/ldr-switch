@@ -4,16 +4,11 @@
 #include <avr/wdt.h>
 
 static uint8_t lighOnDurationHours = 2;
-#if defined(__AVR_ATmega328P__)
-#define LOAD_PIN 9
-#define ADC_PIN A0
-#define INT_PIN PD7 // also button pin
-#elif defined(__AVR_ATtiny13__)
-// TODO
-#define LOAD_PIN PB0 // TODO turn back to PB4?
-#define ADC_PIN A2   // TODO turn back to A3?
-#define INT_PIN PB2  // also button pin
-#endif
+
+#define LOAD_PIN PB0      // pin5 Attiny13
+#define ADC_POWER_PIN PB3 //  pin2 on Attiny13
+#define ADC_PIN A2        // PB4, pin3 Attiny13
+#define INT_PIN PB2       // also button pin, pin7 Attiny13
 
 static uint16_t lightThresholdDark = 700;
 #define lightThresholdBright 350
@@ -51,36 +46,24 @@ void powerDown(uint8_t sleepTime);
 void blink(uint8_t times, uint16_t delayTime = 200);
 void configureButtonInterrupt(bool enable);
 
-#if defined(__AVR_ATmega328P__)
-EMPTY_INTERRUPT(PCINT2_vect);
-#elif defined(__AVR_ATtiny13__)
 EMPTY_INTERRUPT(PCINT0_vect);
-#endif
-ISR(WDT_vect)
-{
-}
-
-bool buttonIsPressed()
-{
-    uint8_t counter = 0;
-    delay(50);
-    counter += digitalRead(INT_PIN);
-    delay(50);
-    counter += digitalRead(INT_PIN);
-    delay(50);
-    counter += digitalRead(INT_PIN);
-    return counter <= 1;
-}
+EMPTY_INTERRUPT(WDT_vect)
 
 void setlighOnDurationHours()
 {
-    while (buttonIsPressed())
+    uint8_t counter = 0;
+    while (digitalRead(INT_PIN) == LOW)
     {
-        lighOnDurationHours++;
-        if (lighOnDurationHours > 8)
-            lighOnDurationHours = 1;
-        blink(lighOnDurationHours);
+        counter++;
+        if (counter > 8)
+            counter = 1;
+        blink(counter);
         delay(2000);
+    }
+    if (counter > 0 && counter != lighOnDurationHours)
+    {
+        lighOnDurationHours = counter;
+        EEPROM_writeAnything(2, lighOnDurationHours);
     }
 }
 
@@ -107,9 +90,7 @@ void readButton(uint16_t lightLevel)
 
             EEPROM_writeAnything(0, lightThresholdDark);
         }
-        // configureButtonInterrupt(false);
         setlighOnDurationHours();
-        // configureButtonInterrupt(true);
     }
 }
 
@@ -117,11 +98,7 @@ void powerDown(uint8_t sleepTime)
 {
     ADCSRA &= ~(1 << ADEN); // adc OFF
     wdt_enable(sleepTime);  // watchdog
-#if defined(__AVR_ATmega328P__)
-    WDTCSR |= (1 << WDIE);
-#elif defined(__AVR_ATtiny13__)
     WDTCR |= _BV(WDTIE);
-#endif
 
     do
     {
@@ -151,50 +128,19 @@ void blink(uint8_t times, uint16_t delayTime)
     }
 }
 
-void configureButtonInterrupt(bool enable)
-{
-    cli();
-    if (enable)
-    {
-        GIMSK |= _BV(PCIE);   //  Enable PCINT interrupt in the general interrupt mask
-        PCMSK |= _BV(PCINT2); // Enable interrupt handler (ISR) for our chosen interrupt pin (PCINT2/PB2/pin 7)
-    }
-    else
-    {
-        GIMSK &= ~_BV(PCIE);
-        PCMSK &= ~_BV(PCINT2);
-    }
-    sei();
-}
-
 void setup()
 {
-#if defined(__AVR_ATmega328P__)
-    Serial.begin(9600);
-    while (!Serial)
-        delay(10);
-
-    pinMode(LOAD_PIN, OUTPUT);      // mosfet gate
-    pinMode(INT_PIN, INPUT_PULLUP); // button pin
-
-    cli();
-    PCICR |= _BV(PCIE2);    //  turn on port d
-    PCMSK2 |= _BV(PCINT23); // turn on pin PD7, which is PCINT23, physical pin 7
-    sei();
-#endif
-
-#if defined(__AVR_ATtiny13__)
-    pinMode(PB3, OUTPUT);
+    pinMode(ADC_POWER_PIN, OUTPUT);
     pinMode(ADC_PIN, INPUT);        // ADC
     pinMode(INT_PIN, INPUT_PULLUP); // button
     pinMode(LOAD_PIN, OUTPUT);      // gate
 
     analogReference(DEFAULT);
 
-    configureButtonInterrupt(true);
-
-    blink(lighOnDurationHours);
-#endif
+    cli();
+    GIMSK |= _BV(PCIE);   //  Enable PCINT interrupt in the general interrupt mask
+    PCMSK |= _BV(PCINT2); // Enable interrupt handler (ISR) for our chosen interrupt pin (PCINT2/PB2/pin 7)
+    sei();
 
     EEPROM_readAnything(0, lightThresholdDark);
     if (lightThresholdDark < 0 || lightThresholdDark > 1024)
@@ -202,13 +148,20 @@ void setup()
         lightThresholdDark = 700;
         EEPROM_writeAnything(0, lightThresholdDark);
     }
+    EEPROM_readAnything(2, lighOnDurationHours);
+    if (lighOnDurationHours < 1 || lighOnDurationHours > 8)
+    {
+        lighOnDurationHours = 2;
+    }
+
+    blink(lighOnDurationHours);
 }
 
 void loop()
 {
-    digitalWrite(PB3, HIGH);
+    digitalWrite(ADC_POWER_PIN, HIGH);
     uint16_t lightLevel = analogRead(ADC_PIN);
-    digitalWrite(PB3, LOW);
+    digitalWrite(ADC_POWER_PIN, LOW);
     readButton(lightLevel);
 
     if (STATE == WAIT_FOR_RESET && lightLevel <= lightThresholdBright)
